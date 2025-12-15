@@ -1,0 +1,395 @@
+// Prisma schema generated for the Oysters platform
+// MySQL datasource with domain-specific models and enums
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  CLIENT
+  ADMIN
+  COURIER
+  STAFF
+}
+
+enum ProductCategory {
+  OYSTERS
+  SEA_URCHINS
+  SCALLOPS
+  CAVIAR
+  SHRIMP
+  STURGEON
+  OTHER
+}
+
+enum ProductStatus {
+  AVAILABLE
+  PREORDER
+  SOON
+  HIDDEN
+}
+
+enum DeliverySlot {
+  MORNING
+  DAY
+  EVENING
+}
+
+// Часовые тайм-слоты для точной доставки (опционально, для будущего)
+enum HourlySlot {
+  H08_09
+  H09_10
+  H10_11
+  H11_12
+  H12_13
+  H13_14
+  H14_15
+  H15_16
+  H16_17
+  H17_18
+  H18_19
+  H19_20
+  H20_21
+}
+
+enum PaymentMethod {
+  CASH
+  ONLINE
+}
+
+enum OrderStatus {
+  NEW
+  CONFIRMED
+  PREP
+  IN_TRANSIT
+  DELIVERED
+  CANCELLED
+}
+
+enum PromoType {
+  PERCENTAGE
+  FIXED
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  phone        String   @unique
+  email        String?  @unique
+  passwordHash String   @map("password_hash")
+  role         UserRole @default(CLIENT)
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  orders            Order[]            @relation("CustomerOrders")
+  courierOrders     Order[]            @relation("CourierAssignments")
+  courierRoutes     CourierRoute[]     @relation("CourierRoutes")
+  clientProfile     Client?
+  courierProfile    CourierProfile?
+  pushSubscriptions PushSubscription[]
+
+  @@map("users")
+}
+
+model Product {
+  id               String          @id @default(cuid())
+  name             String
+  slug             String          @unique
+  category         ProductCategory
+  imageUrls        Json            @map("image_urls")
+  price            Decimal         @db.Decimal(12, 2) // MySQL DECIMAL(12,2)
+  unit             String
+  shortDescription String?         @map("short_description")
+  fullDescription  String?         @map("full_description")
+  status           ProductStatus   @default(AVAILABLE)
+  displayOrder     Int             @default(0) @map("display_order")
+  nutritionInfo    Json?           @map("nutrition_info")
+  pairing          Json?
+  isPromoted       Boolean         @default(false) @map("is_promoted")
+  createdAt        DateTime        @default(now()) @map("created_at")
+  updatedAt        DateTime        @updatedAt @map("updated_at")
+
+  orderItems     OrderItem[]
+  waitlist       Waitlist[]
+  drops          ProductDrop[] // DEPRECATED: use Supply system instead
+  supplyItems    SupplyItem[]
+  supplyWaitlist SupplyWaitlist[]
+
+  @@map("products")
+}
+
+model Order {
+  id                String        @id @default(cuid())
+  orderNumber       String        @unique @map("order_number")
+  userId            String?       @map("user_id")
+  courierId         String?       @map("courier_id")
+  promoCodeId       String?       @map("promo_code_id")
+  dropId            String?       @map("drop_id")
+  items             Json
+  totalAmount       Decimal       @map("total_amount") @db.Decimal(12, 2)
+  deliveryStreet    String        @map("delivery_street")
+  deliveryHouse     String        @map("delivery_house")
+  deliveryFlat      String?       @map("delivery_flat")
+  deliveryPorch     String?       @map("delivery_porch")
+  deliveryFloor     String?       @map("delivery_floor")
+  deliveryComment   String?       @map("delivery_comment")
+  deliveryDate      DateTime      @map("delivery_date")
+  slot              DeliverySlot  @map("delivery_slot")
+  hourlySlot        String?       @map("hourly_slot") // Для будущих часовых слотов
+  paymentMethod     PaymentMethod @map("payment_method")
+  status            OrderStatus   @default(NEW)
+  history           Json          @map("history")
+  feedbackScore     Int?          @map("feedback_score")
+  feedbackText      String?       @map("feedback_text")
+  notifyBeforeHours Int?          @default(1) @map("notify_before_hours") // За сколько часов уведомить клиента
+  createdAt         DateTime      @default(now()) @map("created_at")
+  updatedAt         DateTime      @updatedAt @map("updated_at")
+
+  user         User?          @relation("CustomerOrders", fields: [userId], references: [id], onDelete: SetNull)
+  courier      User?          @relation("CourierAssignments", fields: [courierId], references: [id], onDelete: SetNull)
+  promoCode    PromoCode?     @relation(fields: [promoCodeId], references: [id], onDelete: SetNull)
+  drop         ProductDrop?   @relation(fields: [dropId], references: [id], onDelete: SetNull)
+  orderHistory OrderHistory[]
+  orderItems   OrderItem[]
+
+  @@map("orders")
+}
+
+model OrderItem {
+  id        String  @id @default(cuid())
+  orderId   String  @map("order_id")
+  productId String  @map("product_id")
+  quantity  Int
+  unitPrice Decimal @map("unit_price") @db.Decimal(12, 2)
+
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+  @@map("order_items")
+}
+
+model OrderHistory {
+  id        String      @id @default(cuid())
+  orderId   String      @map("order_id")
+  changedBy String      @map("changed_by")
+  oldStatus OrderStatus @map("old_status")
+  newStatus OrderStatus @map("new_status")
+  timestamp DateTime    @default(now())
+  comment   String?
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@map("order_history")
+}
+
+model Client {
+  id          String   @id @default(cuid())
+  userId      String?  @unique @map("user_id")
+  name        String
+  phone       String   @unique
+  email       String?
+  ordersCount Int      @default(0) @map("orders_count")
+  tags        Json     @default("[]") // Массив тегов в формате JSON
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  user     User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+  waitlist Waitlist[]
+
+  @@map("clients")
+}
+
+model Banner {
+  id           String   @id @default(cuid())
+  imageUrl     String   @map("image_url")
+  title        String
+  subtitle     String?
+  buttonText   String?  @map("button_text")
+  buttonLink   String?  @map("button_link")
+  isActive     Boolean  @default(true) @map("is_active")
+  displayOrder Int      @default(0) @map("display_order")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@map("banners")
+}
+
+model Waitlist {
+  id                String        @id @default(cuid())
+  productId         String        @map("product_id")
+  dropId            String?       @map("drop_id") // Связь с конкретным дропом
+  clientId          String?       @map("client_id")
+  clientName        String        @map("client_name")
+  phone             String
+  email             String?
+  quantity          Int           @map("qty")
+  preferredDate     DateTime?     @map("preferred_date") // Предпочитаемая дата доставки
+  preferredSlot     DeliverySlot? @map("preferred_slot") // Предпочитаемый слот
+  notifyBeforeHours Int?          @default(1) @map("notify_before_hours") // За сколько часов уведомить
+  notified          Boolean       @default(false)
+  autoOrderCreated  Boolean       @default(false) @map("auto_order_created") // Автоматически создан заказ при дропе
+  createdAt         DateTime      @default(now()) @map("created_at")
+
+  product Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  drop    ProductDrop? @relation(fields: [dropId], references: [id], onDelete: SetNull)
+  client  Client?      @relation(fields: [clientId], references: [id], onDelete: SetNull)
+
+  @@map("waitlist")
+}
+
+model CourierProfile {
+  id            String   @id @default(cuid())
+  userId        String   @unique @map("user_id")
+  rating        Decimal? @db.Decimal(3, 2)
+  currentOrders Int      @default(0) @map("current_orders")
+  isActive      Boolean  @default(true) @map("is_active")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("couriers")
+}
+
+model PromoCode {
+  id          String    @id @default(cuid())
+  code        String    @unique
+  type        PromoType
+  value       Decimal   @db.Decimal(8, 2)
+  expiresAt   DateTime  @map("expires_at")
+  maxUses     Int?      @map("max_uses")
+  currentUses Int       @default(0) @map("current_uses")
+  isActive    Boolean   @default(true) @map("is_active")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  orders Order[]
+
+  @@map("promo_codes")
+}
+
+model Setting {
+  id    String @id @default(cuid())
+  key   String @unique
+  value Json
+
+  @@map("settings")
+}
+
+model PushSubscription {
+  id        String   @id @default(cuid())
+  endpoint  String   @unique
+  keys      Json
+  userId    String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@map("push_subscriptions")
+}
+
+// Модель для управления дропами (датами поступления товара)
+model ProductDrop {
+  id        String   @id @default(cuid())
+  productId String   @map("product_id")
+  dropDate  DateTime @map("drop_date") // Дата поступления товара
+  quantity  Int? // Количество товара в дропе (опционально)
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  product  Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  orders   Order[]
+  waitlist Waitlist[]
+
+  @@map("product_drops")
+}
+
+// Заготовка под маршруты курьера
+model CourierRoute {
+  id        String   @id @default(cuid())
+  courierId String   @map("courier_id")
+  routeDate DateTime @map("route_date")
+  orderIds  Json     @map("order_ids") // Массив ID заказов в формате JSON
+  routeData Json?    @map("route_data") // Данные маршрута (координаты, порядок и т.д.)
+  status    String   @default("planned") // planned, active, completed
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  courier User @relation("CourierRoutes", fields: [courierId], references: [id], onDelete: Cascade)
+
+  @@map("courier_routes")
+}
+
+// ============================================
+// SUPPLY SYSTEM (New multi-product drops)
+// ============================================
+
+// Поставка (Supply) - событие поступления нескольких товаров
+model Supply {
+  id          String   @id @default(cuid())
+  name        String // "Поставка морских деликатесов"
+  description String?  @db.Text
+  supplyDate  DateTime @map("supply_date") // Дата и время поступления
+  isActive    Boolean  @default(true) @map("is_active")
+  bannerImage String?  @map("banner_image") // URL изображения для баннера
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  items    SupplyItem[]
+  waitlist SupplyWaitlist[]
+
+  @@map("supplies")
+}
+
+// Товар в поставке с количеством
+model SupplyItem {
+  id          String @id @default(cuid())
+  supplyId    String @map("supply_id")
+  productId   String @map("product_id")
+  quantity    Int // Общее количество в поставке
+  reservedQty Int    @default(0) @map("reserved_qty") // Зарезервировано в waitlist
+
+  supply  Supply  @relation(fields: [supplyId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([supplyId, productId])
+  @@map("supply_items")
+}
+
+// Лист ожидания поставки (с выбором товара, количества и таймслота)
+model SupplyWaitlist {
+  id               String   @id @default(cuid())
+  supplyId         String   @map("supply_id")
+  productId        String   @map("product_id")
+  clientName       String   @map("client_name")
+  phone            String
+  email            String?
+  deliveryAddress  String   @map("delivery_address")
+  quantity         Int
+  deliveryDate     DateTime @map("delivery_date") // Дата доставки (supplyDate + 0-2 дня)
+  deliveryTimeSlot String   @map("delivery_time_slot") // "09:00-10:00", "10:00-11:00" и т.д.
+  notified         Boolean  @default(false)
+  orderCreated     Boolean  @default(false) @map("order_created")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  supply  Supply  @relation(fields: [supplyId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+  @@map("supply_waitlist")
+}
+
+// Аналитика посещений
+model PageView {
+  id        String   @id @default(cuid())
+  path      String
+  userAgent String?  @map("user_agent") @db.Text
+  ip        String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@index([path])
+  @@map("page_views")
+}

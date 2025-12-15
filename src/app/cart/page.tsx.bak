@@ -1,0 +1,245 @@
+"use client"
+
+import { useState } from "react"
+import Header from "@/components/Header"
+import Footer from "@/components/Footer"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Checkbox } from "@/components/ui/checkbox"
+import { useCartStore } from "@/stores/cart"
+import { useToast } from "@/hooks/use-toast"
+import { Trash2 } from "lucide-react"
+
+const deliverySlots = [
+  { id: "MORNING", name: "Утро (9:00-12:00)" },
+  { id: "DAY", name: "День (12:00-16:00)" },
+  { id: "EVENING", name: "Вечер (16:00-20:00)" },
+]
+
+const paymentMethods = [
+  { id: "CASH", name: "Наличные курьеру" },
+  { id: "ONLINE", name: "Онлайн" },
+]
+
+export default function CartPage() {
+  const { toast } = useToast()
+  const { items, totalAmount, updateQuantity, removeItem, clear } = useCartStore()
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [consent, setConsent] = useState(false)
+  const [formData, setFormData] = useState({
+    name: "",
+    phone: "",
+    email: "",
+    street: "",
+    house: "",
+    flat: "",
+    porch: "",
+    floor: "",
+    comment: "",
+    deliveryDate: new Date().toISOString().split("T")[0],
+    deliverySlot: "DAY",
+    paymentMethod: "CASH",
+  })
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (!items.length || !consent) return
+
+    setIsSubmitting(true)
+    try {
+      const payload = {
+        items: items.map((item) => ({
+          productId: item.productId,
+          name: item.name,
+          unit: item.unit,
+          price: item.price,
+          quantity: item.quantity,
+        })),
+        customer: {
+          name: formData.name,
+          phone: formData.phone,
+          email: formData.email || undefined,
+        },
+        delivery: {
+          street: formData.street,
+          house: formData.house,
+          flat: formData.flat || undefined,
+          porch: formData.porch || undefined,
+          floor: formData.floor || undefined,
+          comment: formData.comment || undefined,
+          date: formData.deliveryDate,
+          slot: formData.deliverySlot,
+        },
+        paymentMethod: formData.paymentMethod,
+        promoCode: undefined,
+        consent: true,
+      }
+
+      const response = await fetch("/api/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: "Не удалось оформить заказ" }))
+        throw new Error(error.error)
+      }
+
+      await response.json()
+      clear()
+      toast({ title: "Заказ оформлен", description: "Мы свяжемся с вами для подтверждения." })
+    } catch (error: any) {
+      toast({ title: "Ошибка", description: error.message, variant: "destructive" })
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const disabled = !items.length || !consent || isSubmitting
+
+  return (
+    <div className="min-h-screen bg-black text-white">
+      <Header />
+      <main className="pt-24 pb-16">
+        <div className="container mx-auto px-4 grid gap-8 lg:grid-cols-3">
+          <section className="lg:col-span-2 space-y-4">
+            <h1 className="text-3xl font-bold">Корзина</h1>
+            {items.length === 0 ? (
+              <div className="bg-gray-900/40 border border-gray-800 rounded-2xl p-10 text-center text-gray-300">
+                В корзине пока пусто. Добавьте продукты из каталога, чтобы оформить заказ.
+              </div>
+            ) : (
+              items.map((item) => (
+                <div key={item.productId} className="bg-gray-900/40 border border-gray-800 rounded-2xl p-4 flex gap-4 items-start">
+                  <div className="flex-1">
+                    <p className="text-lg font-semibold">{item.name}</p>
+                    <p className="text-gray-400 text-sm">{item.unit}</p>
+                    <div className="flex items-center gap-3 mt-3">
+                      <Input
+                        type="number"
+                        min={1}
+                        value={item.quantity}
+                        onChange={(event) => updateQuantity(item.productId, Number(event.target.value))}
+                        className="w-24 bg-gray-800 border-gray-700"
+                      />
+                      <p className="text-xl font-bold">{(item.price * item.quantity).toLocaleString('ru-RU')} ?</p>
+                    </div>
+                  </div>
+                  <Button variant="ghost" size="icon" className="text-gray-400" onClick={() => removeItem(item.productId)}>
+                    <Trash2 className="h-5 w-5" />
+                  </Button>
+                </div>
+              ))
+            )}
+          </section>
+
+          <section className="space-y-4">
+            <div className="bg-gray-900/40 border border-gray-800 rounded-2xl p-5 space-y-4">
+              <h2 className="text-xl font-semibold">Оформление заказа</h2>
+              <form className="space-y-4" onSubmit={handleSubmit}>
+                <div className="grid grid-cols-1 gap-3">
+                  <div>
+                    <Label htmlFor="name">Имя</Label>
+                    <Input id="name" required value={formData.name} onChange={(event) => setFormData((prev) => ({ ...prev, name: event.target.value }))} className="bg-gray-800 border-gray-700" />
+                  </div>
+                  <div>
+                    <Label htmlFor="phone">Телефон</Label>
+                    <Input id="phone" required value={formData.phone} onChange={(event) => setFormData((prev) => ({ ...prev, phone: event.target.value }))} className="bg-gray-800 border-gray-700" />
+                  </div>
+                  <div>
+                    <Label htmlFor="email">Email (по желанию)</Label>
+                    <Input id="email" type="email" value={formData.email} onChange={(event) => setFormData((prev) => ({ ...prev, email: event.target.value }))} className="bg-gray-800 border-gray-700" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label>Улица</Label>
+                    <Input required value={formData.street} onChange={(event) => setFormData((prev) => ({ ...prev, street: event.target.value }))} className="bg-gray-800 border-gray-700" />
+                  </div>
+                  <div>
+                    <Label>Дом</Label>
+                    <Input required value={formData.house} onChange={(event) => setFormData((prev) => ({ ...prev, house: event.target.value }))} className="bg-gray-800 border-gray-700" />
+                  </div>
+                  <div>
+                    <Label>Квартира</Label>
+                    <Input value={formData.flat} onChange={(event) => setFormData((prev) => ({ ...prev, flat: event.target.value }))} className="bg-gray-800 border-gray-700" />
+                  </div>
+                  <div>
+                    <Label>Подъезд</Label>
+                    <Input value={formData.porch} onChange={(event) => setFormData((prev) => ({ ...prev, porch: event.target.value }))} className="bg-gray-800 border-gray-700" />
+                  </div>
+                  <div>
+                    <Label>Этаж</Label>
+                    <Input value={formData.floor} onChange={(event) => setFormData((prev) => ({ ...prev, floor: event.target.value }))} className="bg-gray-800 border-gray-700" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label>Дата</Label>
+                    <Input type="date" value={formData.deliveryDate} onChange={(event) => setFormData((prev) => ({ ...prev, deliveryDate: event.target.value }))} className="bg-gray-800 border-gray-700" />
+                  </div>
+                  <div>
+                    <Label>Слот</Label>
+                    <Select value={formData.deliverySlot} onValueChange={(value) => setFormData((prev) => ({ ...prev, deliverySlot: value }))}>
+                      <SelectTrigger className="bg-gray-800 border-gray-700">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="bg-gray-900 border-gray-800 text-white">
+                        {deliverySlots.map((slot) => (
+                          <SelectItem key={slot.id} value={slot.id} className="text-white">
+                            {slot.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label>Оплата</Label>
+                    <Select value={formData.paymentMethod} onValueChange={(value) => setFormData((prev) => ({ ...prev, paymentMethod: value }))}>
+                      <SelectTrigger className="bg-gray-800 border-gray-700">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="bg-gray-900 border-gray-800 text-white">
+                        {paymentMethods.map((method) => (
+                          <SelectItem key={method.id} value={method.id} className="text-white">
+                            {method.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div>
+                  <Label>Комментарий</Label>
+                  <Textarea value={formData.comment} onChange={(event) => setFormData((prev) => ({ ...prev, comment: event.target.value }))} className="bg-gray-800 border-gray-700" rows={3} placeholder="Например, собрать в подарочную упаковку" />
+                </div>
+                <div className="flex items-start gap-2">
+                  <Checkbox checked={consent} onCheckedChange={(checked) => setConsent(Boolean(checked))} />
+                  <p className="text-sm text-gray-400">Я соглашаюсь с политикой обработки персональных данных и правилами сервиса.</p>
+                </div>
+                <Button type="submit" disabled={disabled} className="w-full bg-yellow-500 text-black hover:bg-yellow-400">
+                  {isSubmitting ? 'Отправляем…' : 'Подтвердить заказ'}
+                </Button>
+              </form>
+            </div>
+            <div className="bg-gray-900/40 border border-gray-800 rounded-2xl p-5">
+              <div className="flex justify-between text-gray-300">
+                <span>Сумма заказа</span>
+                <span>{totalAmount.toLocaleString('ru-RU')} ?</span>
+              </div>
+              <div className="flex justify-between text-white font-semibold text-xl mt-2">
+                <span>Итого</span>
+                <span>{totalAmount.toLocaleString('ru-RU')} ?</span>
+              </div>
+            </div>
+          </section>
+        </div>
+      </main>
+      <Footer />
+    </div>
+  )
+}
