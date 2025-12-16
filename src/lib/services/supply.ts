@@ -17,6 +17,7 @@ export async function createSupply(input: CreateSupplyInput) {
                 items: {
                     create: input.items.map((item) => ({
                         productId: item.productId,
+                        variantId: item.variantId || null,
                         quantity: item.quantity,
                     })),
                 },
@@ -36,6 +37,7 @@ export async function getSupplies(isAdmin = false) {
             items: {
                 include: {
                     product: true,
+                    variant: true,
                 },
             },
             _count: {
@@ -138,8 +140,14 @@ export async function getActiveSupply() {
                             price: true,
                             imageUrls: true,
                             unit: true,
+                            hasVariants: true,
+                            variants: {
+                                where: { isAvailable: true },
+                                orderBy: { displayOrder: "asc" },
+                            },
                         },
                     },
+                    variant: true,
                 },
             },
         },
@@ -149,56 +157,64 @@ export async function getActiveSupply() {
 
 export async function addToWaitlist(supplyId: string, input: AddToWaitlistInput) {
     return await db.$transaction(async (tx) => {
-        // 1. Проверяем наличие товара в поставке
-        const supplyItem = await tx.supplyItem.findUnique({
-            where: {
-                supplyId_productId: {
+        // Validate all items exist in supply and have enough quantity
+        for (const item of input.items) {
+            // Find supply item - match by productId and optionally variantId
+            const supplyItem = await tx.supplyItem.findFirst({
+                where: {
                     supplyId,
-                    productId: input.productId,
+                    productId: item.productId,
+                    variantId: item.variantId || null,
                 },
-            },
-        })
+            })
 
-        if (!supplyItem) {
-            throw new Error("Товар не найден в этой поставке")
+            if (!supplyItem) {
+                const variantInfo = item.variantId ? " (выбранный вариант)" : ""
+                throw new Error(`Товар${variantInfo} не найден в этой поставке`)
+            }
+
+            // Check available quantity
+            const available = supplyItem.quantity - supplyItem.reservedCount
+            if (available < item.quantity) {
+                throw new Error(`Недостаточно товара. Доступно: ${available}`)
+            }
         }
 
-        // 2. Проверяем доступное количество
-        const available = supplyItem.quantity - supplyItem.reservedQty
-        if (available < input.quantity) {
-            throw new Error(`Недостаточно товара. Доступно: ${available}`)
+        // Create waitlist entries for all items
+        const waitlistEntries = await Promise.all(
+            input.items.map((item) =>
+                tx.supplyWaitlist.create({
+                    data: {
+                        supplyId,
+                        productId: item.productId,
+                        variantId: item.variantId || null,
+                        quantity: item.quantity,
+                        customerName: input.customerName,
+                        customerPhone: input.customerPhone,
+                        deliveryAddress: input.deliveryAddress || null,
+                        status: "PENDING",
+                    },
+                })
+            )
+        )
+
+        // Update reserved counts
+        for (const item of input.items) {
+            await tx.supplyItem.updateMany({
+                where: {
+                    supplyId,
+                    productId: item.productId,
+                    variantId: item.variantId || null,
+                },
+                data: {
+                    reservedCount: {
+                        increment: item.quantity,
+                    },
+                },
+            })
         }
 
-        // 3. Создаем запись в waitlist
-        const waitlistEntry = await tx.supplyWaitlist.create({
-            data: {
-                supplyId,
-                productId: input.productId,
-                quantity: input.quantity,
-                clientName: input.clientName,
-                phone: input.phone,
-                email: input.email || null,
-                deliveryAddress: input.deliveryAddress,
-                deliveryDate: new Date(input.deliveryDate),
-                deliveryTimeSlot: input.deliveryTimeSlot,
-            },
-        })
-
-        // 4. Обновляем резерв
-        await tx.supplyItem.update({
-            where: {
-                supplyId_productId: {
-                    supplyId,
-                    productId: input.productId,
-                },
-            },
-            data: {
-                reservedQty: {
-                    increment: input.quantity,
-                },
-            },
-        })
-
-        return waitlistEntry
+        return waitlistEntries
     })
 }
+```

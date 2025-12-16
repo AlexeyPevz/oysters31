@@ -76,6 +76,13 @@ enum PromoType {
   FIXED
 }
 
+enum WaitlistStatus {
+  PENDING
+  NOTIFIED
+  ORDER_CREATED
+  CANCELLED
+}
+
 model User {
   id           String   @id @default(cuid())
   name         String
@@ -142,8 +149,68 @@ model ProductVariant {
   createdAt    DateTime      @default(now()) @map("created_at")
   updatedAt    DateTime      @updatedAt @map("updated_at")
 
+  supplyItems    SupplyItem[]
+  supplyWaitlist SupplyWaitlist[]
+
   @@index([productId])
   @@map("product_variants")
+}
+
+model Supply {
+  id          String       @id @default(cuid())
+  name        String
+  description String?
+  supplyDate  DateTime     @map("supply_date")
+  isActive    Boolean      @default(true) @map("is_active")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+
+  supplyItems    SupplyItem[]
+  supplyWaitlist SupplyWaitlist[]
+
+  @@map("supplies")
+}
+
+model SupplyItem {
+  id            String          @id @default(cuid())
+  supplyId      String          @map("supply_id")
+  supply        Supply          @relation(fields: [supplyId], references: [id], onDelete: Cascade)
+  productId     String          @map("product_id")
+  product       Product         @relation(fields: [productId], references: [id])
+  variantId     String?         @map("variant_id")
+  variant       ProductVariant? @relation(fields: [variantId], references: [id])
+  quantity      Int
+  reservedCount Int             @default(0) @map("reserved_count")
+  createdAt     DateTime        @default(now()) @map("created_at")
+  updatedAt     DateTime        @default(now()) @updatedAt @map("updated_at")
+
+  @@map("supply_items")
+  @@index([supplyId])
+  @@index([productId])
+  @@index([variantId])
+}
+
+model SupplyWaitlist {
+  id              String          @id @default(cuid())
+  supplyId        String          @map("supply_id")
+  supply          Supply          @relation(fields: [supplyId], references: [id], onDelete: Cascade)
+  productId       String          @map("product_id")
+  product         Product         @relation(fields: [productId], references: [id])
+  variantId       String?         @map("variant_id")
+  variant         ProductVariant? @relation(fields: [variantId], references: [id])
+  quantity        Int
+  customerName    String          @map("customer_name")
+  customerPhone   String          @map("customer_phone")
+  deliveryAddress String?         @map("delivery_address")
+  status          WaitlistStatus  @default(PENDING)
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @default(now()) @updatedAt @map("updated_at")
+
+  @@map("supply_waitlist")
+  @@index([supplyId])
+  @@index([productId])
+  @@index([variantId])
+  @@index([customerPhone])
 }
 
 model Order {
@@ -345,128 +412,3 @@ model CourierRoute {
   @@map("courier_routes")
 }
 
-// ============================================
-// SUPPLY SYSTEM (New multi-product drops)
-// ============================================
-
-// Поставка (Supply) - событие поступления нескольких товаров
-model Supply {
-  id          String   @id @default(cuid())
-  name        String // "Поставка морских деликатесов"
-  description String?  @db.Text
-  supplyDate  DateTime @map("supply_date") // Дата и время поступления
-  isActive    Boolean  @default(true) @map("is_active")
-  bannerImage String?  @map("banner_image") // URL изображения для баннера
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-
-  items    SupplyItem[]
-  waitlist SupplyWaitlist[]
-
-  @@map("supplies")
-}
-
-// Товар в поставке с количеством
-model SupplyItem {
-  id          String @id @default(cuid())
-  supplyId    String @map("supply_id")
-  productId   String @map("product_id")
-  quantity    Int // Общее количество в поставке
-  reservedQty Int    @default(0) @map("reserved_qty") // Зарезервировано в waitlist
-
-  supply  Supply  @relation(fields: [supplyId], references: [id], onDelete: Cascade)
-  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
-
-  @@unique([supplyId, productId])
-  @@map("supply_items")
-}
-
-// Лист ожидания поставки (с выбором товара, количества и таймслота)
-model SupplyWaitlist {
-  id               String   @id @default(cuid())
-  supplyId         String   @map("supply_id")
-  productId        String   @map("product_id")
-  clientName       String   @map("client_name")
-  phone            String
-  email            String?
-  deliveryAddress  String   @map("delivery_address") @db.VarChar(500)
-  quantity         Int
-  deliveryDate     DateTime @map("delivery_date") // Дата доставки (supplyDate + 0-2 дня)
-  deliveryTimeSlot String   @map("delivery_time_slot") // "09:00-10:00", "10:00-11:00" и т.д.
-  notified         Boolean  @default(false)
-  orderCreated     Boolean  @default(false) @map("order_created")
-  createdAt        DateTime @default(now()) @map("created_at")
-
-  supply  Supply  @relation(fields: [supplyId], references: [id], onDelete: Cascade)
-  product Product @relation(fields: [productId], references: [id])
-
-  @@map("supply_waitlist")
-}
-
-// Аналитика посещений
-model PageView {
-  id        String   @id @default(cuid())
-  path      String
-  userAgent String?  @map("user_agent") @db.Text
-  ip        String?
-  createdAt DateTime @default(now()) @map("created_at")
-
-  @@index([createdAt])
-  @@index([path])
-  @@map("page_views")
-}
-
-// ============================================
-// MAS: Multi-Agent System for omni-channel
-// ============================================
-
-enum MessageChannel {
-  TELEGRAM
-  WHATSAPP
-  VK
-  INSTAGRAM
-  SITE
-}
-
-enum MessageDirection {
-  IN
-  OUT
-}
-
-// Связка пользователей из разных каналов в единый профиль
-model CustomerIdentity {
-  id                String         @id @default(cuid())
-  unifiedCustomerId String         @map("unified_customer_id") // Общий ID для всех каналов
-  channel           MessageChannel
-  externalId        String         @map("external_id") // ID в канале (telegram user id, wa phone hash, etc)
-  phone             String?
-  email             String?
-  createdAt         DateTime       @default(now()) @map("created_at")
-
-  @@unique([channel, externalId])
-  @@index([phone])
-  @@index([email])
-  @@index([unifiedCustomerId])
-  @@map("customer_identities")
-}
-
-// Логи всех сообщений агентов для аудита и аналитики
-model AgentMessage {
-  id           String           @id @default(cuid())
-  channel      MessageChannel
-  customerId   String           @map("customer_id") // unified_customer_id
-  direction    MessageDirection
-  text         String           @db.Text
-  toolCalls    Json?            @map("tool_calls")
-  llmModel     String?          @map("llm_model")
-  latencyMs    Int?             @map("latency_ms")
-  tokensUsed   Int?             @map("tokens_used")
-  feedback     Int? // 1 = 👍, -1 = 👎
-  stateVersion String?          @map("state_version")
-  messageId    String?          @map("message_id") // Для идемпотентности
-  createdAt    DateTime         @default(now()) @map("created_at")
-
-  @@index([customerId, createdAt])
-  @@index([feedback, createdAt])
-  @@map("agent_messages")
-}
