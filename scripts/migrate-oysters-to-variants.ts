@@ -21,23 +21,32 @@ async function migrateOystersToVariants(dryRun = true) {
     console.log(`\n🦪 Oyster Migration Script ${dryRun ? '(DRY RUN)' : '(LIVE)'}\n`)
 
     try {
-        // 1. Find all oyster products with size numbers
+        // 1. Find all oyster products with size indicators (numbers or weights)
         const oysters = await db.product.findMany({
             where: {
                 category: 'OYSTERS',
-                name: { contains: '№' }
+                OR: [
+                    { name: { contains: '№' } },
+                    { name: { contains: ' гр' } },
+                    { name: { contains: 'г.' } },
+                ]
             },
             orderBy: { name: 'asc' }
         })
 
-        console.log(`Found ${oysters.length} oyster products with size numbers\n`)
+        console.log(`Found ${oysters.length} oyster products with size indicators\n`)
 
         // 2. Group by base name (without size)
         const groups = new Map<string, typeof oysters>()
 
         for (const oyster of oysters) {
-            // Extract base name: "Устрица Хасанская №1" -> "Устрица Хасанская"
-            const baseName = oyster.name.replace(/\s*№\d+.*$/, '').trim()
+            // Extract base name:
+            // "Устрица Хасанская 40-60 гр." -> "Устрица Хасанская"
+            // "Устрица Императорская №1" -> "Устрица Императорская"
+            let baseName = oyster.name
+                .replace(/\s*№\d+.*$/, '')  // Remove №1, №2, etc.
+                .replace(/\s+\d+-?\d*\+?\s*гр?\.?.*$/i, '')  // Remove 40-60 гр., 200+ гр., etc.
+                .trim()
 
             if (!groups.has(baseName)) {
                 groups.set(baseName, [])
@@ -72,10 +81,13 @@ async function migrateOystersToVariants(dryRun = true) {
                     parentId = existingParent.id
                 } else {
                     // Create parent product
+                    const baseSlug = baseName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
+                    const uniqueSlug = `${baseSlug}-${Date.now()}`
+
                     const parent = await db.product.create({
                         data: {
                             name: baseName,
-                            slug: `${baseName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')}-variants`,
+                            slug: uniqueSlug,
                             category: 'OYSTERS',
                             price: products[0].price, // Use first variant price as default
                             unit: products[0].unit,
@@ -94,15 +106,32 @@ async function migrateOystersToVariants(dryRun = true) {
 
                 // Create variants from old products
                 for (const product of products) {
-                    const sizeMatch = product.name.match(/№(\d+)/)
-                    const variantName = sizeMatch ? `№${sizeMatch[1]}` : 'Стандарт'
-                    const displayOrder = parseInt(sizeMatch?.[1] || '0')
+                    // Extract variant name from full product name
+                    let variantName: string
+                    let size: string | null = null
+
+                    // Try to extract №1, №2, etc.
+                    const numberMatch = product.name.match(/№(\d+)/)
+                    if (numberMatch) {
+                        variantName = `№${numberMatch[1]}`
+                    } else {
+                        // Try to extract weight: "40-60 гр.", "200+ гр.", etc.
+                        const weightMatch = product.name.match(/(\d+-?\d*\+?)\s*гр?\.?/i)
+                        if (weightMatch) {
+                            variantName = weightMatch[1]
+                            size = `${weightMatch[1]}г`
+                        } else {
+                            variantName = 'Стандарт'
+                        }
+                    }
+
+                    const displayOrder = parseInt(numberMatch?.[1] || '0')
 
                     const variant = await db.productVariant.create({
                         data: {
                             productId: parentId,
                             name: variantName,
-                            size: null, // Can be filled manually later in admin
+                            size: size,
                             price: product.price,
                             stock: 0, // Set to 0, admin will update
                             status: product.status,
@@ -111,7 +140,7 @@ async function migrateOystersToVariants(dryRun = true) {
                         }
                     })
 
-                    console.log(`   ✓ Created variant: ${variantName} (${variant.id})`)
+                    console.log(`   ✓ Created variant: ${variantName}${size ? ` (${size})` : ''} (${variant.id})`)
                 }
 
                 // Mark old products as HIDDEN (don't delete yet)
