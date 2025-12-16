@@ -157,6 +157,23 @@ export async function getActiveSupply() {
 
 export async function addToWaitlist(supplyId: string, input: AddToWaitlistInput) {
     return await db.$transaction(async (tx) => {
+        // Check timeslot capacity (max 4 orders per slot)
+        const deliveryDate = new Date(input.deliveryDate)
+        const existingOrders = await tx.supplyWaitlist.count({
+            where: {
+                supplyId,
+                deliveryDate: {
+                    gte: new Date(deliveryDate.setHours(0, 0, 0, 0)),
+                    lt: new Date(deliveryDate.setHours(23, 59, 59, 999)),
+                },
+                deliveryTimeSlot: input.deliveryTimeSlot,
+            },
+        })
+
+        if (existingOrders >= 4) {
+            throw new Error(`Тайм-слот ${input.deliveryTimeSlot} на ${new Date(input.deliveryDate).toLocaleDateString('ru-RU')} заполнен. Выберите другое время.`)
+        }
+
         // Validate all items exist in supply and have enough quantity
         for (const item of input.items) {
             // Find supply item - match by productId and optionally variantId
@@ -192,6 +209,8 @@ export async function addToWaitlist(supplyId: string, input: AddToWaitlistInput)
                         customerName: input.customerName,
                         customerPhone: input.customerPhone,
                         deliveryAddress: input.deliveryAddress || null,
+                        deliveryDate: new Date(input.deliveryDate),
+                        deliveryTimeSlot: input.deliveryTimeSlot,
                         status: "PENDING",
                     },
                 })
@@ -215,3 +234,5 @@ export async function addToWaitlist(supplyId: string, input: AddToWaitlistInput)
         }
 
         return waitlistEntries
+    })
+}

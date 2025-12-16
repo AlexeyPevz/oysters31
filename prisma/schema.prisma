@@ -202,6 +202,8 @@ model SupplyWaitlist {
   customerName    String          @map("customer_name")
   customerPhone   String          @map("customer_phone")
   deliveryAddress String?         @map("delivery_address")
+  deliveryDate    DateTime        @map("delivery_date")
+  deliveryTimeSlot String         @map("delivery_time_slot")
   status          WaitlistStatus  @default(PENDING)
   createdAt       DateTime        @default(now()) @map("created_at")
   updatedAt       DateTime        @default(now()) @updatedAt @map("updated_at")
@@ -211,6 +213,7 @@ model SupplyWaitlist {
   @@index([productId])
   @@index([variantId])
   @@index([customerPhone])
+  @@index([deliveryDate, deliveryTimeSlot])
 }
 
 model Order {
