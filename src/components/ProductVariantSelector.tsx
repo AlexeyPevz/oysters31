@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import { Check } from "lucide-react"
 
 export type ProductVariant = {
@@ -10,6 +10,7 @@ export type ProductVariant = {
     size: string | null
     price: number
     stock: number
+    status: string
     isAvailable: boolean
 }
 
@@ -17,6 +18,20 @@ type ProductVariantSelectorProps = {
     variants: ProductVariant[]
     onSelect: (variant: ProductVariant) => void
     selectedVariantId?: string
+}
+
+const statusText: Record<string, string> = {
+    AVAILABLE: "В наличии",
+    PREORDER: "Предзаказ",
+    SOON: "Скоро",
+    HIDDEN: "Недоступно",
+}
+
+const statusColor: Record<string, string> = {
+    AVAILABLE: "bg-green-500/20 text-green-400 border-green-500/50",
+    PREORDER: "bg-blue-500/20 text-blue-400 border-blue-500/50",
+    SOON: "bg-yellow-500/20 text-yellow-400 border-yellow-500/50",
+    HIDDEN: "bg-gray-500/20 text-gray-400 border-gray-500/50",
 }
 
 export function ProductVariantSelector({
@@ -45,7 +60,10 @@ export function ProductVariantSelector({
             <div className="grid grid-cols-1 gap-2">
                 {sortedVariants.map((variant) => {
                     const isSelected = selected === variant.id
-                    const isAvailable = variant.isAvailable && variant.stock > 0
+                    const isAvailable = variant.status === "AVAILABLE" && variant.stock > 0
+                    const isHidden = variant.status === "HIDDEN"
+
+                    if (isHidden) return null // Don't show hidden variants
 
                     return (
                         <button
@@ -62,13 +80,21 @@ export function ProductVariantSelector({
               `}
                         >
                             <div className="flex-1 text-left">
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2 mb-1">
                                     <span className="font-semibold text-white">{variant.name}</span>
                                     {variant.size && (
                                         <span className="text-sm text-gray-400">({variant.size})</span>
                                     )}
+                                    <Badge className={`text-xs ${statusColor[variant.status] || statusColor.AVAILABLE}`}>
+                                        {statusText[variant.status] || variant.status}
+                                    </Badge>
                                 </div>
-                                {!isAvailable && (
+                                {!isAvailable && variant.status !== "AVAILABLE" && (
+                                    <span className="text-xs text-gray-400">
+                                        {variant.status === "SOON" ? "Ожидается поступление" : "Доступен для предзаказа"}
+                                    </span>
+                                )}
+                                {!isAvailable && variant.stock === 0 && variant.status === "AVAILABLE" && (
                                     <span className="text-xs text-red-400">Нет в наличии</span>
                                 )}
                             </div>

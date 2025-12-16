@@ -108,6 +108,7 @@ export default async function CatalogPage({ searchParams }: { searchParams: Reco
       size: v.size,
       price: Number(v.price),
       stock: v.stock,
+      status: v.status,
       isAvailable: v.isAvailable,
     })),
     imageUrls: (() => {

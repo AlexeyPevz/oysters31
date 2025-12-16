@@ -127,19 +127,20 @@ model Product {
 }
 
 model ProductVariant {
-  id        String  @id @default(cuid())
-  productId String  @map("product_id")
-  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  id           String        @id @default(cuid())
+  productId    String        @map("product_id")
+  product      Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
 
-  name         String // "№1", "№2", "№3", etc.
-  size         String? // "50-60г", "60-70г", etc.
-  price        Decimal @db.Decimal(12, 2)
-  stock        Int     @default(0)
-  isAvailable  Boolean @default(true) @map("is_available")
-  displayOrder Int     @default(0) @map("display_order")
+  name         String        // "№1", "№2", "№3", etc.
+  size         String?       // "50-60г", "60-70г", etc.
+  price        Decimal       @db.Decimal(12, 2)
+  stock        Int           @default(0)
+  status       ProductStatus @default(AVAILABLE)
+  isAvailable  Boolean       @default(true) @map("is_available")
+  displayOrder Int           @default(0) @map("display_order")
 
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
 
   @@index([productId])
   @@map("product_variants")

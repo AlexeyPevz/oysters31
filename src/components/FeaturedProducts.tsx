@@ -24,6 +24,7 @@ export type FeaturedProduct = {
     size: string | null
     price: number
     stock: number
+    status: string
     isAvailable: boolean
   }>
   isPromoted?: boolean
