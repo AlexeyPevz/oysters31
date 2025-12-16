@@ -29,7 +29,7 @@ interface FooterProps {
 }
 
 export default function Footer({ settings }: FooterProps) {
-const currentYear = new Date().getFullYear()
+  const currentYear = new Date().getFullYear()
 
   const socialLinksData = settings?.socialLinks || {}
   const socialLinks = [
@@ -37,10 +37,10 @@ const currentYear = new Date().getFullYear()
     socialLinksData.instagram && { href: socialLinksData.instagram, label: "Instagram", icon: Instagram },
     socialLinksData.telegram && { href: socialLinksData.telegram, label: "Telegram", icon: Send },
   ].filter(Boolean) as Array<{ href: string; label: string; icon: typeof UsersRound }>
-  
+
   const phone = settings?.contactPhone || "+7 (4722) 55-35-55"
   const email = settings?.contactEmail || "info@oysters31.ru"
-  const address = settings?.address || "г. Белгород, ул. Королёва, 7а"
+  const address = settings?.address || "г. Белгород"
   return (
     <footer className="bg-black border-t border-gray-800">
       <div className="container mx-auto px-4 py-12">
@@ -116,7 +116,7 @@ const currentYear = new Date().getFullYear()
               </div>
               <div>
                 <p className="text-white">{address}</p>
-                <p className="text-gray-400 text-xs">Центр выдачи и дегустационная</p>
+                <p className="text-gray-400 text-xs">Работаем на доставку</p>
               </div>
             </div>
           </div>

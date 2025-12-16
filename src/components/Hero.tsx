@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button"
 import Image from "next/image"
 
 const heroFeatures = [
-  { label: "Быстрая доставка", badge: "60 мин", description: "Привезём за час" },
+  { label: "Быстрая доставка", badge: "День в день", description: "Доставим в удобное время" },
   { label: "Гарантия свежести", badge: "100%", description: "Контроль температуры" },
   { label: "Лучший выбор", badge: "50+", description: "Виды морепродуктов" },
 ]
@@ -32,7 +32,7 @@ export default function Hero({ phone = "+7 (4722) 55-35-55" }: HeroProps) {
         {/* Затемнение для читаемости текста */}
         <div className="absolute inset-0 bg-black/60"></div>
       </div>
-      
+
       {/* Контент поверх фона */}
       <div className="relative z-10 text-center">
         <h1 className="text-4xl lg:text-6xl font-bold text-white mb-6 leading-tight">

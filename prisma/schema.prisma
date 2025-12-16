@@ -112,6 +112,7 @@ model Product {
   nutritionInfo    Json?           @map("nutrition_info")
   pairing          Json?
   isPromoted       Boolean         @default(false) @map("is_promoted")
+  hasVariants      Boolean         @default(false) @map("has_variants")
   createdAt        DateTime        @default(now()) @map("created_at")
   updatedAt        DateTime        @updatedAt @map("updated_at")
 
@@ -120,8 +121,28 @@ model Product {
   drops          ProductDrop[] // DEPRECATED: use Supply system instead
   supplyItems    SupplyItem[]
   supplyWaitlist SupplyWaitlist[]
+  variants       ProductVariant[]
 
   @@map("products")
+}
+
+model ProductVariant {
+  id        String  @id @default(cuid())
+  productId String  @map("product_id")
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  name         String // "№1", "№2", "№3", etc.
+  size         String? // "50-60г", "60-70г", etc.
+  price        Decimal @db.Decimal(12, 2)
+  stock        Int     @default(0)
+  isAvailable  Boolean @default(true) @map("is_available")
+  displayOrder Int     @default(0) @map("display_order")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([productId])
+  @@map("product_variants")
 }
 
 model Order {
@@ -367,7 +388,7 @@ model SupplyWaitlist {
   clientName       String   @map("client_name")
   phone            String
   email            String?
-  deliveryAddress  String   @map("delivery_address")
+  deliveryAddress  String   @map("delivery_address") @db.VarChar(500)
   quantity         Int
   deliveryDate     DateTime @map("delivery_date") // Дата доставки (supplyDate + 0-2 дня)
   deliveryTimeSlot String   @map("delivery_time_slot") // "09:00-10:00", "10:00-11:00" и т.д.
@@ -392,4 +413,59 @@ model PageView {
   @@index([createdAt])
   @@index([path])
   @@map("page_views")
+}
+
+// ============================================
+// MAS: Multi-Agent System for omni-channel
+// ============================================
+
+enum MessageChannel {
+  TELEGRAM
+  WHATSAPP
+  VK
+  INSTAGRAM
+  SITE
+}
+
+enum MessageDirection {
+  IN
+  OUT
+}
+
+// Связка пользователей из разных каналов в единый профиль
+model CustomerIdentity {
+  id                String         @id @default(cuid())
+  unifiedCustomerId String         @map("unified_customer_id") // Общий ID для всех каналов
+  channel           MessageChannel
+  externalId        String         @map("external_id") // ID в канале (telegram user id, wa phone hash, etc)
+  phone             String?
+  email             String?
+  createdAt         DateTime       @default(now()) @map("created_at")
+
+  @@unique([channel, externalId])
+  @@index([phone])
+  @@index([email])
+  @@index([unifiedCustomerId])
+  @@map("customer_identities")
+}
+
+// Логи всех сообщений агентов для аудита и аналитики
+model AgentMessage {
+  id           String           @id @default(cuid())
+  channel      MessageChannel
+  customerId   String           @map("customer_id") // unified_customer_id
+  direction    MessageDirection
+  text         String           @db.Text
+  toolCalls    Json?            @map("tool_calls")
+  llmModel     String?          @map("llm_model")
+  latencyMs    Int?             @map("latency_ms")
+  tokensUsed   Int?             @map("tokens_used")
+  feedback     Int? // 1 = 👍, -1 = 👎
+  stateVersion String?          @map("state_version")
+  messageId    String?          @map("message_id") // Для идемпотентности
+  createdAt    DateTime         @default(now()) @map("created_at")
+
+  @@index([customerId, createdAt])
+  @@index([feedback, createdAt])
+  @@map("agent_messages")
 }

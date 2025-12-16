@@ -14,12 +14,12 @@ interface ContactsProps {
 export default function Contacts({ settings }: ContactsProps) {
   const phoneNumber = settings?.contactPhone || "+7 (4722) 55-35-55"
   const telLink = `tel:${phoneNumber.replace(/\D/g, '')}`
-const mapLink = "https://yandex.ru/maps/-/CDfABGCA"
+  const mapLink = "https://yandex.ru/maps/-/CDfABGCA"
   const socialLinks = settings?.socialLinks || {}
   const whatsappLink = socialLinks.whatsapp || `https://wa.me/${phoneNumber.replace(/\D/g, '')}`
   const telegramLink = socialLinks.telegram || "https://t.me/oysters31"
   const email = settings?.contactEmail || "info@oysters31.ru"
-  const address = settings?.address || "г. Белгород, ул. Королёва, 7а"
+  const address = settings?.address || "г. Белгород"
   const { toast } = useToast()
   const [formValues, setFormValues] = useState({ name: "", phone: "", message: "" })
   const [isSubmitting, setIsSubmitting] = useState(false)
