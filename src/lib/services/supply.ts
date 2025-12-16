@@ -215,6 +215,3 @@ export async function addToWaitlist(supplyId: string, input: AddToWaitlistInput)
         }
 
         return waitlistEntries
-    })
-}
-```
