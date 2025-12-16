@@ -3,20 +3,30 @@
 import { useState, useEffect } from "react"
 import { Clock, ShoppingCart } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { ProductVariantSelector, ProductVariant } from "@/components/ProductVariantSelector"
 import { SupplyCartModal } from "@/components/SupplyCartModal"
 
 type SupplyItem = {
     id: string
     productId: string
+    variantId: string | null
     quantity: number
-    reservedQty: number
+    reservedCount: number
     product: {
         id: string
         name: string
         price: number
         imageUrls: any
         unit: string
+        hasVariants?: boolean
+        variants?: ProductVariant[]
     }
+    variant?: {
+        id: string
+        name: string
+        size: string | null
+        price: number
+    } | null
 }
 
 type Supply = {
@@ -32,7 +42,8 @@ export function SupplyBanner({ supply }: { supply: Supply }) {
     const [timeLeft, setTimeLeft] = useState("")
     const [isExpired, setIsExpired] = useState(false)
     const [isCartOpen, setIsCartOpen] = useState(false)
-    const [cart, setCart] = useState<{ productId: string; quantity: number }[]>([])
+    const [cart, setCart] = useState<{ productId: string; variantId?: string; quantity: number }[]>([])
+    const [selectedVariants, setSelectedVariants] = useState<Record<string, ProductVariant>>({})
     const [isMounted, setIsMounted] = useState(false)
 
     useEffect(() => {
@@ -64,15 +75,20 @@ export function SupplyBanner({ supply }: { supply: Supply }) {
         return () => clearInterval(timer)
     }, [supply.supplyDate])
 
-    const addToCart = (productId: string, quantity: number) => {
+    const addToCart = (productId: string, quantity: number, variantId?: string) => {
         setCart((prev) => {
-            const existing = prev.find((item) => item.productId === productId)
+            const cartKey = variantId ? `${productId}-${variantId}` : productId
+            const existing = prev.find((item) =>
+                item.productId === productId && item.variantId === variantId
+            )
             if (existing) {
                 return prev.map((item) =>
-                    item.productId === productId ? { ...item, quantity: item.quantity + quantity } : item
+                    item.productId === productId && item.variantId === variantId
+                        ? { ...item, quantity: item.quantity + quantity }
+                        : item
                 )
             }
-            return [...prev, { productId, quantity }]
+            return [...prev, { productId, variantId, quantity }]
         })
     }
 
@@ -113,8 +129,21 @@ export function SupplyBanner({ supply }: { supply: Supply }) {
 
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
                             {supply.items.map((item) => {
-                                const available = item.quantity - item.reservedQty
-                                const inCart = cart.find((c) => c.productId === item.productId)?.quantity || 0
+                                const hasVariants = item.product.hasVariants && item.product.variants && item.product.variants.length > 0
+                                const selectedVariant = selectedVariants[item.id]
+
+                                // For variant products, calculate available based on selected variant
+                                let available = item.quantity - item.reservedCount
+                                let displayPrice = Number(item.product.price)
+
+                                if (hasVariants && selectedVariant) {
+                                    displayPrice = selectedVariant.price
+                                }
+
+                                const inCart = cart.find((c) =>
+                                    c.productId === item.productId &&
+                                    (!hasVariants || c.variantId === selectedVariant?.id)
+                                )?.quantity || 0
 
                                 // Extract first image URL
                                 const getProductImage = () => {
@@ -137,20 +166,56 @@ export function SupplyBanner({ supply }: { supply: Supply }) {
                                         )}
                                         <div className="p-4">
                                             <h3 className="text-lg font-semibold mb-2">{item.product.name}</h3>
-                                            <p className="text-xl font-bold text-yellow-500 mb-2">
-                                                {Number(item.product.price).toLocaleString('ru-RU')} ₽
-                                                <span className="text-sm text-gray-400 font-normal ml-1">/ {item.product.unit}</span>
-                                            </p>
-                                            <p className="text-sm text-gray-400 mb-3">
-                                                Доступно: <span className="text-white font-medium">{available} шт</span>
-                                            </p>
-                                            {inCart > 0 && (
-                                                <p className="text-sm text-yellow-500 mb-2">В корзине: {inCart} шт</p>
+
+                                            {hasVariants ? (
+                                                <>
+                                                    <ProductVariantSelector
+                                                        variants={item.product.variants!}
+                                                        onSelect={(variant) => {
+                                                            setSelectedVariants(prev => ({
+                                                                ...prev,
+                                                                [item.id]: variant
+                                                            }))
+                                                        }}
+                                                        selectedVariantId={selectedVariant?.id}
+                                                    />
+                                                    {selectedVariant && (
+                                                        <>
+                                                            <p className="text-sm text-gray-400 mt-3 mb-2">
+                                                                Доступно: <span className="text-white font-medium">{available} шт</span>
+                                                            </p>
+                                                            {inCart > 0 && (
+                                                                <p className="text-sm text-yellow-500 mb-2">В корзине: {inCart} шт</p>
+                                                            )}
+                                                        </>
+                                                    )}
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <p className="text-xl font-bold text-yellow-500 mb-2">
+                                                        {displayPrice.toLocaleString('ru-RU')} ₽
+                                                        <span className="text-sm text-gray-400 font-normal ml-1">/ {item.product.unit}</span>
+                                                    </p>
+                                                    <p className="text-sm text-gray-400 mb-3">
+                                                        Доступно: <span className="text-white font-medium">{available} шт</span>
+                                                    </p>
+                                                    {inCart > 0 && (
+                                                        <p className="text-sm text-yellow-500 mb-2">В корзине: {inCart} шт</p>
+                                                    )}
+                                                </>
                                             )}
-                                            <div className="flex gap-2">
+
+                                            <div className="flex gap-2 mt-3">
                                                 <Button
-                                                    onClick={() => addToCart(item.productId, 1)}
-                                                    disabled={available <= inCart}
+                                                    onClick={() => addToCart(
+                                                        item.productId,
+                                                        1,
+                                                        hasVariants ? selectedVariant?.id : undefined
+                                                    )}
+                                                    disabled={
+                                                        (hasVariants && !selectedVariant) ||
+                                                        available <= inCart
+                                                    }
                                                     className="flex-1 bg-yellow-500 text-black hover:bg-yellow-400 disabled:opacity-50"
                                                     size="sm"
                                                 >
