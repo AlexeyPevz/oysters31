@@ -44,8 +44,8 @@ export async function listPublicProducts(filters: ProductFilters = {}) {
 
   if (filters.search) {
     where.OR = [
-      { name: { contains: filters.search, mode: "insensitive" } },
-      { shortDescription: { contains: filters.search, mode: "insensitive" } },
+      { name: { contains: filters.search } },
+      { shortDescription: { contains: filters.search } },
     ]
   }
 
@@ -65,6 +65,12 @@ export async function listPublicProducts(filters: ProductFilters = {}) {
       orderBy,
       skip: (pagination.page - 1) * pagination.limit,
       take: pagination.limit,
+      include: {
+        variants: {
+          where: { isAvailable: true },
+          orderBy: { displayOrder: "asc" },
+        },
+      },
     }),
     db.product.count({ where }),
   ])
@@ -81,7 +87,15 @@ export async function listPublicProducts(filters: ProductFilters = {}) {
 }
 
 export async function getProductBySlug(slug: string) {
-  return db.product.findUnique({ where: { slug } })
+  return db.product.findUnique({
+    where: { slug },
+    include: {
+      variants: {
+        where: { isAvailable: true },
+        orderBy: { displayOrder: "asc" },
+      },
+    },
+  })
 }
 
 export async function adminListProducts(filters: ProductFilters = {}) {

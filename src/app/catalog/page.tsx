@@ -101,6 +101,15 @@ export default async function CatalogPage({ searchParams }: { searchParams: Reco
     unit: product.unit,
     shortDescription: product.shortDescription,
     status: product.status,
+    hasVariants: product.hasVariants,
+    variants: product.variants?.map(v => ({
+      id: v.id,
+      name: v.name,
+      size: v.size,
+      price: Number(v.price),
+      stock: v.stock,
+      isAvailable: v.isAvailable,
+    })),
     imageUrls: (() => {
       if (!product.imageUrls) return []
       // Prisma Json type может вернуть уже распарсенный массив или строку
@@ -111,8 +120,8 @@ export default async function CatalogPage({ searchParams }: { searchParams: Reco
         try {
           const parsed = JSON.parse(product.imageUrls)
           return Array.isArray(parsed) ? parsed.filter((url): url is string => typeof url === 'string' && url.length > 0) : []
-      } catch {
-        return []
+        } catch {
+          return []
         }
       }
       return []

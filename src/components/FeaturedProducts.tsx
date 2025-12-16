@@ -14,10 +14,19 @@ export type FeaturedProduct = {
   slug: string
   price: number
   unit: string
-  shortDescription?: string | null
-  status: ProductStatus
+  shortDescription: string | null
+  status: string
+  imageUrls: string[]
+  hasVariants?: boolean
+  variants?: Array<{
+    id: string
+    name: string
+    size: string | null
+    price: number
+    stock: number
+    isAvailable: boolean
+  }>
   isPromoted?: boolean
-  imageUrls?: string[]
 }
 
 interface Props {
