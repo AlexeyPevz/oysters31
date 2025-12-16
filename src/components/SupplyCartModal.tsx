@@ -29,6 +29,7 @@ type Supply = {
 
 type CartItem = {
     productId: string
+    variantId?: string
     quantity: number
 }
 
@@ -55,27 +56,40 @@ export function SupplyCartModal({
     const timeSlots = generateTimeSlots()
     const deliveryDates = getDeliveryDates(supply.supplyDate)
 
-    const updateQuantity = (productId: string, delta: number) => {
-        const item = supply.items.find((i) => i.productId === productId)
+    const updateQuantity = (productId: string, variantId: string | undefined, delta: number) => {
+        const item = supply.items.find((i) =>
+            i.productId === productId &&
+            (!variantId || i.variantId === variantId)
+        )
         if (!item) return
 
-        const available = item.quantity - item.reservedQty
-        const currentQty = cart.find((c) => c.productId === productId)?.quantity || 0
+        const available = item.quantity - item.reservedCount
+        const currentQty = cart.find((c) =>
+            c.productId === productId && c.variantId === variantId
+        )?.quantity || 0
         const newQty = currentQty + delta
 
         if (newQty <= 0) {
-            onUpdateCart(cart.filter((c) => c.productId !== productId))
+            onUpdateCart(cart.filter((c) =>
+                !(c.productId === productId && c.variantId === variantId)
+            ))
         } else if (newQty <= available) {
             onUpdateCart(
-                cart.map((c) => (c.productId === productId ? { ...c, quantity: newQty } : c))
+                cart.map((c) =>
+                    c.productId === productId && c.variantId === variantId
+                        ? { ...c, quantity: newQty }
+                        : c
+                )
             )
         } else {
             toast.error(`Доступно только ${available} шт`)
         }
     }
 
-    const removeItem = (productId: string) => {
-        onUpdateCart(cart.filter((c) => c.productId !== productId))
+    const removeItem = (productId: string, variantId: string | undefined) => {
+        onUpdateCart(cart.filter((c) =>
+            !(c.productId === productId && c.variantId === variantId)
+        ))
     }
 
     const mutation = useMutation({
@@ -140,66 +154,106 @@ export function SupplyCartModal({
                     </div>
 
                     {/* Cart Items */}
-                    <div className="mb-6 space-y-3">
+                    <div className="mb-6">
                         <h3 className="text-lg font-semibold mb-3">Ваш заказ ({totalItems} товаров)</h3>
-                        {cart.map((cartItem) => {
-                            const supplyItem = supply.items.find((i) => i.productId === cartItem.productId)
-                            if (!supplyItem) return null
+                        <div className="space-y-4 mb-6">
+                            {cart.map((cartItem) => {
+                                const supplyItem = supply.items.find((i) =>
+                                    i.productId === cartItem.productId &&
+                                    (!cartItem.variantId || i.variantId === cartItem.variantId)
+                                )
+                                if (!supplyItem) return null
 
-                            return (
-                                <div key={cartItem.productId} className="flex items-center gap-4 bg-gray-800/50 p-3 rounded-lg">
-                                    <div className="flex-1">
-                                        <p className="font-medium">{supplyItem.product.name}</p>
-                                        <p className="text-sm text-gray-400">
-                                            {Number(supplyItem.product.price).toLocaleString('ru-RU')} ₽ × {cartItem.quantity} шт
-                                        </p>
-                                        <p className="text-lg font-semibold text-yellow-500">
-                                            {(Number(supplyItem.product.price) * cartItem.quantity).toLocaleString('ru-RU')} ₽
-                                        </p>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <Button
-                                            size="sm"
-                                            variant="outline"
-                                            onClick={() => updateQuantity(cartItem.productId, -1)}
-                                            className="h-8 w-8 p-0"
-                                        >
-                                            <Minus className="h-4 w-4" />
-                                        </Button>
-                                        <span className="w-8 text-center font-medium">{cartItem.quantity}</span>
-                                        <Button
-                                            size="sm"
-                                            variant="outline"
-                                            onClick={() => updateQuantity(cartItem.productId, 1)}
-                                            className="h-8 w-8 p-0"
-                                        >
-                                            <Plus className="h-4 w-4" />
-                                        </Button>
-                                        <Button
-                                            size="sm"
-                                            variant="ghost"
-                                            onClick={() => removeItem(cartItem.productId)}
-                                            className="h-8 w-8 p-0 text-red-400 hover:text-red-300"
-                                        >
-                                            <Trash2 className="h-4 w-4" />
-                                        </Button>
-                                    </div>
-                                </div>
-                            )
-                        })}
-                    </div>
+                                const product = supplyItem.product
+                                const variant = supplyItem.variant
+                                const price = variant ? Number(variant.price) : Number(product.price)
+                                const subtotal = price * cartItem.quantity
 
-                    {/* Total Section */}
-                    <div className="border-t border-gray-800 pt-4 mb-6">
-                        <div className="flex justify-between items-center mb-2">
-                            <span className="text-lg font-semibold">Итого:</span>
-                            <span className="text-3xl font-bold text-yellow-500">
-                                {cart.reduce((total, cartItem) => {
-                                    const supplyItem = supply.items.find(i => i.productId === cartItem.productId)
-                                    if (!supplyItem) return total
-                                    return total + (Number(supplyItem.product.price) * cartItem.quantity)
-                                }, 0).toLocaleString('ru-RU')} ₽
-                            </span>
+                                // Extract first image
+                                const getProductImage = () => {
+                                    if (!product.imageUrls) return null
+                                    const urls = Array.isArray(product.imageUrls)
+                                        ? product.imageUrls
+                                        : JSON.parse(product.imageUrls as string)
+                                    return urls[0] || null
+                                }
+                                const imageUrl = getProductImage()
+
+                                return (
+                                    <div key={`${cartItem.productId}-${cartItem.variantId || 'no-variant'}`} className="flex gap-4 bg-gray-800/50 p-4 rounded-lg">
+                                        {imageUrl && (
+                                            <img
+                                                src={imageUrl}
+                                                alt={product.name}
+                                                className="w-20 h-20 object-cover rounded"
+                                            />
+                                        )}
+                                        <div className="flex-1">
+                                            <h3 className="font-semibold mb-1">{product.name}</h3>
+                                            {variant && (
+                                                <p className="text-sm text-gray-400 mb-1">
+                                                    {variant.name}{variant.size ? ` (${variant.size})` : ''}
+                                                </p>
+                                            )}
+                                            <p className="text-yellow-500 font-bold">
+                                                {price.toLocaleString('ru-RU')} ₽
+                                                <span className="text-sm text-gray-400 font-normal ml-1">× {cartItem.quantity}</span>
+                                            </p>
+                                            <p className="text-sm text-gray-300 mt-1">
+                                                Итого: {subtotal.toLocaleString('ru-RU')} ₽
+                                            </p>
+                                        </div>
+                                        <div className="flex flex-col gap-2">
+                                            <div className="flex items-center gap-2">
+                                                <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    onClick={() => updateQuantity(cartItem.productId, cartItem.variantId, -1)}
+                                                    className="h-8 w-8 p-0"
+                                                >
+                                                    <Minus className="h-4 w-4" />
+                                                </Button>
+                                                <span className="w-8 text-center">{cartItem.quantity}</span>
+                                                <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    onClick={() => updateQuantity(cartItem.productId, cartItem.variantId, 1)}
+                                                    className="h-8 w-8 p-0"
+                                                >
+                                                    <Plus className="h-4 w-4" />
+                                                </Button>
+                                            </div>
+                                            <Button
+                                                size="sm"
+                                                variant="outline"
+                                                onClick={() => removeItem(cartItem.productId, cartItem.variantId)}
+                                                className="text-red-500 hover:text-red-400"
+                                            >
+                                                <Trash2 className="h-4 w-4" />
+                                            </Button>
+                                        </div>
+                                    </div>
+                                )
+                            })}
+                        </div>
+
+                        <div className="border-t border-gray-700 pt-4 mb-6">
+                            <div className="flex justify-between text-lg font-bold">
+                                <span>Итого:</span>
+                                <span className="text-yellow-500">
+                                    {cart.reduce((sum, item) => {
+                                        const supplyItem = supply.items.find((i) =>
+                                            i.productId === item.productId &&
+                                            (!item.variantId || i.variantId === item.variantId)
+                                        )
+                                        if (!supplyItem) return sum
+                                        const price = supplyItem.variant
+                                            ? Number(supplyItem.variant.price)
+                                            : Number(supplyItem.product.price)
+                                        return sum + (price * item.quantity)
+                                    }, 0).toLocaleString('ru-RU')} ₽
+                                </span>
+                            </div>
                         </div>
                         <p className="text-sm text-gray-400 text-right">
                             Предварительная сумма заказа
